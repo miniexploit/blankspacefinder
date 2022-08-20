@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+
+# blankspacefinder.py
+# Copyright (C) 2022 MiniExploit
+
+import sys
+from m1n1Exception import *
+import capstone
+import struct
+
+set_package_name("blankspacefinder")
+
+def print_usage():
+	print("USAGE: blankspacefinder [iboot_path] [payload_path] [output]")
+	print("blankspacefinder - Find blank space in iBoot to insert payload")
+
+def find_blanklen(iboot, payload_len):
+	iboot_len = len(iboot)
+	print(f"iBoot len={iboot_len}")
+	for i in range(0, iboot_len-1):
+		rbyte = bytes(iboot[i:i+1])
+		if rbyte != b"\x00":
+			continue
+		blanklen = 1
+		for y in range(i, iboot_len-1):
+			rbyte1 = bytes(iboot[y:y+1])
+			if rbyte1 == b"\x00":
+				blanklen += 1
+			else:
+				break
+		# check
+		if blanklen >= payload_len:
+			print("found blank range!")
+			# in case blanklen > payload_len, 
+			# replacing the whole range with payload will delete some extra x\00 
+			# => iBoot size changes
+			blanklen = payload_len 
+			return i, i + blanklen - 1 # start_of_range, end_of_range
+	reterror(f"No blank space in iBoot is large enough for payload_len={payload_len}")
+
+def get_iboot_major_ver(iboot):
+	verstr = iboot.find(b"iBoot-")
+	major_ver = iboot[verstr+6:verstr+10]
+	return int(major_ver)
+
+def get_base_addr(iboot): # adam's function
+	iboot_ver = get_iboot_major_ver(iboot)
+	print(f"iBoot major ver={iboot_ver}")
+	IBOOT_BASE_OFFSET = 0x300 if iboot_ver >= 6603 else 0x318
+	cs = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
+	for insn in cs.disasm(iboot, 0, 0x50):
+		if insn.id == capstone.arm64.ARM64_INS_LDR:
+			return struct.unpack("<Q", iboot[IBOOT_BASE_OFFSET : IBOOT_BASE_OFFSET + 8])[0]
+	reterror("Failed to get iBoot base")
+
+def main():
+	if len(sys.argv) < 4:
+		print_usage()
+		return 0
+	iboot_path = sys.argv[1]
+	payload_path = sys.argv[2]
+	out_path = sys.argv[3]
+	retassure(os.path.isfile(iboot_path), "Invalid input iBoot path")
+	retassure(os.path.isfile(payload_path), "Invalid input payload path")
+	with open(iboot_path, "rb") as f:
+		iboot = f.read()
+	with open(payload_path, "rb") as f:
+		payload = f.read()
+	payload_len = len(payload)
+	print(f"payload len={payload_len}")
+	base_address = get_base_addr(iboot)
+	print(f"base address={hex(base_address)}")
+	offsets = find_blanklen(iboot, payload_len)
+	print(f"Range starts at {hex(offsets[0])}, ends at {hex(offsets[1])}")
+	input("Do you want to place payload into the blank range? (ENTER to continue, Ctrl+C to stop)")
+	iboot_bytearr = bytearray(iboot)
+	iboot_bytearr[offsets[0]:offsets[1]] = payload
+	print("Writing out patched file")
+	with open(out_path, "wb") as f:
+		f.write(bytes(iboot_bytearr))
+	print("Payload inserted!")
+	print(f"Use kairos to point \"go\" command handler to load address={hex(base_adress+offsets[0])}")
+
+	
+if __name__ == "__main__":
+	try:
+		main()
+	except m1n1Exception as e:
+		print(e)
+
+
+
+
