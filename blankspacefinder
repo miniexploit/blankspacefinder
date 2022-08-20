@@ -79,7 +79,7 @@ def main():
 	with open(out_path, "wb") as f:
 		f.write(bytes(iboot_bytearr))
 	print("Payload inserted!")
-	print(f"Use kairos to point \"go\" command handler to load address={hex(base_adress+offsets[0])}")
+	print(f"Use kairos to point \"go\" command handler to load address={hex(base_address+offsets[0])}")
 
 	
 if __name__ == "__main__":
