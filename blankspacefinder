@@ -35,7 +35,9 @@ def find_blanklen(iboot, payload_len):
 			# replacing the whole range with payload will delete some extra x\00 
 			# => iBoot size changes
 			blanklen = payload_len 
-			return i, i + blanklen - 1 # start_of_range, end_of_range
+			while i % 4 != 0:
+				i += 1
+			return i, i + blanklen # start_of_range, end_of_range
 	reterror(f"No blank space in iBoot is large enough for payload_len={payload_len}")
 
 def get_iboot_major_ver(iboot):
